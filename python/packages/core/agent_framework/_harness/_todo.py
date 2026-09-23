@@ -61,8 +61,16 @@ class TodoItem(SerializationMixin):
 
     def __init__(self, id: int, title: str, description: str | None = None, is_complete: bool = False) -> None:
         """Initialize one todo item."""
+        if isinstance(id, bool) or not isinstance(id, int):
+            raise ValueError("Todo item id must be an integer.")
+        if not isinstance(title, str) or not title.strip():
+            raise ValueError("Todo item title must be a non-empty string.")
+        if description is not None and not isinstance(description, str):
+            raise ValueError("Todo item description must be a string or null.")
+        if not isinstance(is_complete, bool):
+            raise ValueError("Todo item is_complete must be a boolean.")
         self.id = id
-        self.title = title
+        self.title = title.strip()
         self.description = description
         self.is_complete = is_complete
 
@@ -87,7 +95,7 @@ class TodoItem(SerializationMixin):
         title = raw_item.get("title")
         description = raw_item.get("description")
         is_complete = raw_item.get("is_complete", False)
-        if not isinstance(item_id, int):
+        if isinstance(item_id, bool) or not isinstance(item_id, int):
             raise ValueError("Todo item id must be an integer.")
         if not isinstance(title, str) or not title.strip():
             raise ValueError("Todo item title must be a non-empty string.")
@@ -152,7 +160,7 @@ class TodoCompleteInput(SerializationMixin):
 
     def __init__(self, id: int, reason: str) -> None:
         """Initialize one todo complete input."""
-        if not isinstance(id, int):
+        if isinstance(id, bool) or not isinstance(id, int):
             raise ValueError("Todo complete input id must be an integer.")
         if not isinstance(reason, str) or not reason.strip():
             raise ValueError("Todo complete input reason must be a non-empty string.")
@@ -172,10 +180,10 @@ class TodoCompleteInput(SerializationMixin):
         del dependencies
         item_id = raw_item.get("id")
         reason = raw_item.get("reason")
-        if not isinstance(item_id, int):
+        if isinstance(item_id, bool) or not isinstance(item_id, int):
             raise ValueError("Todo complete input id must be an integer.")
-        if not isinstance(reason, str):
-            raise ValueError("Todo complete input reason must be a string.")
+        if not isinstance(reason, str) or not reason.strip():
+            raise ValueError("Todo complete input reason must be a non-empty string.")
         return cls(id=item_id, reason=reason)
 
 
@@ -225,6 +233,8 @@ def _coerce_todo_complete_input(item: TodoCompleteInput | dict[str, Any] | Any) 
 
 def _safe_next_id(items: list[TodoItem], next_id: int) -> int:
     """Clamp ``next_id`` so it cannot collide with any persisted item id."""
+    if isinstance(next_id, bool) or not isinstance(next_id, int):
+        raise ValueError("next_id must be an integer.")
     return max(next_id, max((item.id for item in items), default=0) + 1)
 
 
@@ -268,7 +278,7 @@ class TodoSessionStore(TodoStore):
                 f"got {type(raw_items).__name__}."
             )
         raw_next_id = provider_state.get("next_id", 1)
-        if not isinstance(raw_next_id, int):
+        if isinstance(raw_next_id, bool) or not isinstance(raw_next_id, int):
             raise ValueError(
                 f"Session state for source_id {source_id!r} has a non-integer 'next_id' field; "
                 f"got {type(raw_next_id).__name__}."
@@ -538,6 +548,8 @@ class TodoProvider(ContextProvider):
             """Remove one or more todo items by ID."""
             if not ids:
                 raise ValueError("ids must contain at least one todo ID.")
+            if any(isinstance(i, bool) or not isinstance(i, int) for i in ids):
+                raise ValueError("All todo IDs must be integers.")
 
             async with self._mutation_lock(session):
                 items, next_id = await self.store.load_state(session, source_id=self.source_id)

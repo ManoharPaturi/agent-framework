@@ -21,7 +21,7 @@ from agent_framework import (
     TodoSessionStore,
     TodoStore,
 )
-from agent_framework._harness._todo import TodoInput
+from agent_framework._harness._todo import TodoCompleteInput, TodoInput
 
 from .test_filesystem import COLLIDING_IDENTIFIERS
 
@@ -64,6 +64,30 @@ def test_todo_input_round_trips_and_validates() -> None:
 
     with pytest.raises(ValueError, match="description must be a string or null"):
         TodoInput.from_dict({"title": "Write tests", "description": 123})
+
+
+def test_todo_item_and_complete_input_reject_boolean_and_invalid_types() -> None:
+    """TodoItem and TodoCompleteInput should reject boolean IDs and invalid inputs."""
+    with pytest.raises(ValueError, match="id must be an integer"):
+        TodoItem(id=True, title="Test")  # type: ignore[arg-type]
+
+    with pytest.raises(ValueError, match="title must be a non-empty string"):
+        TodoItem(id=1, title="   ")
+
+    with pytest.raises(ValueError, match="id must be an integer"):
+        TodoItem.from_dict({"id": False, "title": "Test"})
+
+    with pytest.raises(ValueError, match="id must be an integer"):
+        TodoCompleteInput(id=True, reason="done")  # type: ignore[arg-type]
+
+    with pytest.raises(ValueError, match="reason must be a non-empty string"):
+        TodoCompleteInput(id=1, reason="   ")
+
+    with pytest.raises(ValueError, match="id must be an integer"):
+        TodoCompleteInput.from_dict({"id": True, "reason": "done"})
+
+    with pytest.raises(ValueError, match="reason must be a non-empty string"):
+        TodoCompleteInput.from_dict({"id": 1, "reason": "   "})
 
 
 async def test_todo_session_store_initializes_and_round_trips_state() -> None:
