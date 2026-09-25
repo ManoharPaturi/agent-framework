@@ -152,3 +152,32 @@ async def test_load_missing_id_raises(conformance_storage: CheckpointStorage) ->
 async def test_save_returns_id(conformance_storage: CheckpointStorage) -> None:
     checkpoint = _conformance_checkpoint()
     assert await conformance_storage.save(checkpoint) == checkpoint.checkpoint_id
+
+
+@pytest.mark.parametrize("order", ["parent_first", "child_first"])
+async def test_get_latest_breaks_timestamp_ties_by_lineage(conformance_storage: CheckpointStorage, order: str) -> None:
+    """When checkpoints share identical timestamps, get_latest must select the lineage tip regardless of save order."""
+    ts = "2026-09-18T10:00:00+00:00"
+    parent = WorkflowCheckpoint(
+        workflow_name="conformance-workflow",
+        graph_signature_hash="hash",
+        checkpoint_id="parent-cp",
+        timestamp=ts,
+        iteration_count=1,
+    )
+    child = WorkflowCheckpoint(
+        workflow_name="conformance-workflow",
+        graph_signature_hash="hash",
+        checkpoint_id="child-cp",
+        timestamp=ts,
+        iteration_count=1,
+        previous_checkpoint_id="parent-cp",
+    )
+
+    save_order = [parent, child] if order == "parent_first" else [child, parent]
+    for cp in save_order:
+        await conformance_storage.save(cp)
+
+    latest = await conformance_storage.get_latest(workflow_name="conformance-workflow")
+    assert latest is not None
+    assert latest.checkpoint_id == "child-cp"

@@ -32,13 +32,18 @@ class _NotAllowed:
 
 
 def _checkpoint(
-    checkpoint_id: str, *, workflow_name: str = "workflow", timestamp: str = "2026-01-01T00:00:00+00:00"
+    checkpoint_id: str,
+    *,
+    workflow_name: str = "workflow",
+    timestamp: str = "2026-01-01T00:00:00+00:00",
+    previous_checkpoint_id: str | None = None,
 ) -> WorkflowCheckpoint:
     return WorkflowCheckpoint(
         workflow_name=workflow_name,
         graph_signature_hash="graph-hash",
         checkpoint_id=checkpoint_id,
         timestamp=timestamp,
+        previous_checkpoint_id=previous_checkpoint_id,
     )
 
 
@@ -313,6 +318,20 @@ async def test_get_latest_returns_none_when_no_checkpoints_exist() -> None:
     storage.list_checkpoints = AsyncMock(return_value=[])  # zuban:ignore
 
     assert await storage.get_latest(workflow_name="workflow") is None
+
+
+@pytest.mark.parametrize("order", ["parent_first", "child_first"])
+async def test_get_latest_breaks_timestamp_ties_by_lineage(order: str) -> None:
+    """When checkpoints share identical timestamps, get_latest selects the lineage tip regardless of list order."""
+    storage = FoundryCheckpointStore("context-1", _platform_context())
+    ts = "2026-09-18T10:00:00+00:00"
+    parent = _checkpoint("parent", timestamp=ts)
+    child = _checkpoint("child", timestamp=ts, previous_checkpoint_id="parent")
+
+    checkpoints = [parent, child] if order == "parent_first" else [child, parent]
+    storage.list_checkpoints = AsyncMock(return_value=checkpoints)  # zuban:ignore
+
+    assert await storage.get_latest(workflow_name="workflow") == child
 
 
 @pytest.mark.parametrize("is_hosted", [True, False])

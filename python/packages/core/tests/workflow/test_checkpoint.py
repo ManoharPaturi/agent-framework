@@ -3449,6 +3449,8 @@ async def test_await_signal_through_cancellation_returns_immediately_for_a_resol
         checkpoint_module._await_signal_through_cancellation(resolved),  # pyright: ignore[reportPrivateUsage]
         timeout=5,
     )
+
+
 async def test_memory_get_latest_ties_broken_by_lineage_not_save_order():
     """Identical timestamps must resolve via the lineage chain, not dict order."""
     from datetime import datetime, timezone
@@ -3475,3 +3477,37 @@ async def test_memory_get_latest_ties_broken_by_lineage_not_save_order():
         assert latest.checkpoint_id == "child", (
             f"save order {[cp.checkpoint_id for cp in save_order]} picked {latest.checkpoint_id}"
         )
+
+
+def test_select_latest_checkpoint_ties_broken_by_lineage() -> None:
+    """Unit test for select_latest_checkpoint with lineage chains and forks."""
+    from agent_framework._workflows._checkpoint import select_latest_checkpoint
+
+    assert select_latest_checkpoint([]) is None
+
+    ts = "2026-09-18T10:00:00+00:00"
+    cp1 = WorkflowCheckpoint(
+        workflow_name="w", graph_signature_hash="h", checkpoint_id="cp1", timestamp=ts, iteration_count=1
+    )
+    assert select_latest_checkpoint([cp1]) == cp1
+
+    cp2 = WorkflowCheckpoint(
+        workflow_name="w",
+        graph_signature_hash="h",
+        checkpoint_id="cp2",
+        timestamp=ts,
+        iteration_count=1,
+        previous_checkpoint_id="cp1",
+    )
+    cp3 = WorkflowCheckpoint(
+        workflow_name="w",
+        graph_signature_hash="h",
+        checkpoint_id="cp3",
+        timestamp=ts,
+        iteration_count=1,
+        previous_checkpoint_id="cp2",
+    )
+
+    assert select_latest_checkpoint([cp1, cp2, cp3]) == cp3
+    assert select_latest_checkpoint([cp3, cp2, cp1]) == cp3
+    assert select_latest_checkpoint([cp2, cp1, cp3]) == cp3

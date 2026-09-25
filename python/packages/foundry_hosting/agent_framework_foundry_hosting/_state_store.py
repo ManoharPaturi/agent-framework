@@ -2,7 +2,6 @@
 
 
 from abc import ABC, abstractmethod
-from datetime import datetime
 from typing import Generic, Protocol, TypeVar
 
 from agent_framework import (
@@ -14,6 +13,7 @@ from agent_framework import (
     WorkflowCheckpoint,
     WorkflowCheckpointException,
 )
+from agent_framework._workflows._checkpoint import select_latest_checkpoint
 from azure.ai.agentserver.core import AgentConfig, FoundryAgentRequestContext
 from azure.ai.agentserver.core.storage import FoundryStateStore, FoundryStorageConflictError
 
@@ -176,9 +176,7 @@ class FoundryCheckpointStore:
 
     async def get_latest(self, *, workflow_name: str) -> WorkflowCheckpoint | None:
         checkpoints = await self.list_checkpoints(workflow_name=workflow_name)
-        if not checkpoints:
-            return None
-        return max(checkpoints, key=lambda checkpoint: datetime.fromisoformat(checkpoint.timestamp))
+        return select_latest_checkpoint(checkpoints)
 
     async def list_checkpoint_ids(self, *, workflow_name: str) -> list[CheckpointID]:
         checkpoints = await self.list_checkpoints(workflow_name=workflow_name)

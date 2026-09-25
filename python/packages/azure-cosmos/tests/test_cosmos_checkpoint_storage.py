@@ -371,7 +371,7 @@ async def test_get_latest_returns_none_when_empty(mock_container: MagicMock) -> 
     assert result is None
 
 
-async def test_get_latest_uses_order_by_desc_with_limit(mock_container: MagicMock) -> None:
+async def test_get_latest_uses_order_by_desc(mock_container: MagicMock) -> None:
     mock_container.query_items.return_value = _to_async_iter([])
 
     storage = CosmosCheckpointStorage(container_client=mock_container)
@@ -379,7 +379,27 @@ async def test_get_latest_uses_order_by_desc_with_limit(mock_container: MagicMoc
 
     kwargs = mock_container.query_items.call_args.kwargs
     assert "ORDER BY c.timestamp DESC" in kwargs["query"]
-    assert "OFFSET 0 LIMIT 1" in kwargs["query"]
+
+
+@pytest.mark.parametrize("order", ["parent_first", "child_first"])
+async def test_get_latest_breaks_timestamp_ties_by_lineage(mock_container: MagicMock, order: str) -> None:
+    """When checkpoints share identical timestamps, get_latest selects the lineage tip regardless of query order."""
+    ts = "2026-09-18T10:00:00+00:00"
+    parent = _make_checkpoint(checkpoint_id="parent", timestamp=ts)
+    child = _make_checkpoint(checkpoint_id="child", previous_checkpoint_id="parent", timestamp=ts)
+
+    docs = (
+        [_checkpoint_to_cosmos_document(parent), _checkpoint_to_cosmos_document(child)]
+        if order == "parent_first"
+        else [_checkpoint_to_cosmos_document(child), _checkpoint_to_cosmos_document(parent)]
+    )
+    mock_container.query_items.return_value = _to_async_iter(docs)
+
+    storage = CosmosCheckpointStorage(container_client=mock_container)
+    latest = await storage.get_latest(workflow_name="test-workflow")
+
+    assert latest is not None
+    assert latest.checkpoint_id == "child"
 
 
 # --- Tests for list_checkpoint_ids ---

@@ -9,7 +9,7 @@ from typing import Any, TypedDict
 
 from agent_framework._settings import SecretString, load_settings
 from agent_framework._telemetry import get_user_agent, mark_feature_used
-from agent_framework._workflows._checkpoint import CheckpointID, WorkflowCheckpoint
+from agent_framework._workflows._checkpoint import CheckpointID, WorkflowCheckpoint, select_latest_checkpoint
 from agent_framework._workflows._checkpoint_encoding import decode_checkpoint_value, encode_checkpoint_value
 from agent_framework.exceptions import WorkflowCheckpointException
 from azure.core.credentials import TokenCredential
@@ -353,7 +353,7 @@ class CosmosCheckpointStorage:
         """
         await self._ensure_container_proxy()
 
-        query = "SELECT * FROM c WHERE c.workflow_name = @workflow_name ORDER BY c.timestamp DESC OFFSET 0 LIMIT 1"
+        query = "SELECT * FROM c WHERE c.workflow_name = @workflow_name ORDER BY c.timestamp DESC"
         parameters: list[dict[str, object]] = [
             {"name": "@workflow_name", "value": workflow_name},
         ]
@@ -364,16 +364,26 @@ class CosmosCheckpointStorage:
             partition_key=workflow_name,
         )
 
+        candidates: list[WorkflowCheckpoint] = []
+        target_timestamp: str | None = None
         async for item in items:
             checkpoint = self._document_to_checkpoint(item)
+            if target_timestamp is None:
+                target_timestamp = checkpoint.timestamp
+                candidates.append(checkpoint)
+            elif checkpoint.timestamp == target_timestamp:
+                candidates.append(checkpoint)
+            else:
+                break
+
+        latest_checkpoint = select_latest_checkpoint(candidates)
+        if latest_checkpoint is not None:
             logger.debug(
                 "Latest checkpoint for workflow %s is %s",
                 workflow_name,
-                checkpoint.checkpoint_id,
+                latest_checkpoint.checkpoint_id,
             )
-            return checkpoint
-
-        return None
+        return latest_checkpoint
 
     async def list_checkpoint_ids(self, *, workflow_name: str) -> list[CheckpointID]:
         """List checkpoint IDs for a given workflow name.
